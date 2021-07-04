@@ -21,6 +21,7 @@ local YELLOW = {1, 1, .15}
 local CHECK_INTERVAL = .1
 
 unitscan_targets = {}
+volumeLevel = ''
 local found = {}
 
 do
@@ -28,9 +29,15 @@ do
 	
 	function unitscan.play_sound()
 		if not last_played or GetTime() - last_played > 8 then
-			PlaySoundFile([[Interface\AddOns\unitscan\Event_wardrum_ogre.ogg]], 'Master')
-			PlaySoundFile([[Interface\AddOns\unitscan\scourge_horn.ogg]], 'Master')
-			last_played = GetTime()
+			if volumeLevel == 'low' then
+				PlaySoundFile([[Interface\AddOns\unitscan\Event_wardrum_ogre-50.ogg]], 'Master')
+				PlaySoundFile([[Interface\AddOns\unitscan\scourge_horn-50.ogg]], 'Master')
+				last_played = GetTime()
+			else
+				PlaySoundFile([[Interface\AddOns\unitscan\Event_wardrum_ogre.ogg]], 'Master')
+				PlaySoundFile([[Interface\AddOns\unitscan\scourge_horn.ogg]], 'Master')
+				last_played = GetTime()
+			end 
 		end
 	end
 end
@@ -302,15 +309,114 @@ function unitscan.toggle_target(name)
 		unitscan.print('+ ' .. key)
 	end
 end
+
+function unitscan.editor()
+	local editorFrame = CreateFrame("Frame", "EditorScrollingTextFrame", UIParent, BackdropTemplateMixin and "BackdropTemplate")
+	editorFrame:SetSize(250, 200)
+	editorFrame:SetPoint("CENTER", 0, 100)
+	editorFrame:SetFrameStrata("BACKGROUND")
+	editorFrame:SetMovable(true)
+	editorFrame:EnableMouse(true)
+	editorFrame:RegisterForDrag("LeftButton")
+	editorFrame:SetScript("OnDragStart", editorFrame.StartMoving)
+	editorFrame:SetScript("OnDragStop", editorFrame.StopMovingOrSizing)
+		
+	editorFrame:SetBackdrop({
+		bgFile = "Interface/BUTTONS/WHITE8X8",
+		edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+		tile = true,
+		edgeSize = 8,
+		tileSize = 8,
+		insets = {
+				left = 0,
+				right = 0,
+				top = 0,
+				bottom = 0,
+		},
+	})
+	editorFrame:SetBackdropColor(0, 0, 0, 0.5)
+
+	editorFrame.Close = CreateFrame("Button", "$parentSave", editorFrame, "UIPanelButtonTemplate")
+	editorFrame.Close:SetSize(50, 20)
+	editorFrame.Close:SetPoint("TOPLEFT", 5, -6)
+	editorFrame.Close:SetText("Save")
+	editorFrame.Close:SetScript("OnClick", function(self)
+		local input = editorFrame.Text:GetText()
+		lines = {}
+		for l in input:gmatch("[^\n]+") do
+			table.insert(lines, strupper(l))
+		end
+
+		unitscan_targets = {}
+		for _, n in ipairs(lines) do
+			if n ~= '' and n ~= '\n' then
+				unitscan_targets[n] = true
+			end
+		end
+		self:GetParent():Hide()
+	end)
+		
+	editorFrame.Cancel = CreateFrame("Button", "$parentCancel", editorFrame, "UIPanelButtonTemplate")
+	editorFrame.Cancel:SetSize(62, 20)
+	editorFrame.Cancel:SetPoint("TOPRIGHT", -5, -6)
+	editorFrame.Cancel:SetText("Cancel")
+	editorFrame.Cancel:SetScript("OnClick", function(self)
+		self:GetParent():Hide()
+	end)
+
+	editorFrame.Select = CreateFrame("Button", "$parentSelect", editorFrame, "UIPanelButtonTemplate")
+	editorFrame.Select:SetSize(76, 20)
+	editorFrame.Select:SetPoint("TOP", 0, -6)
+	editorFrame.Select:SetText("Highlight")
+	editorFrame.Select:SetScript("OnClick", function(self)
+		self:GetParent().Text:HighlightText() -- parameters (start, end) or default all
+		self:GetParent().Text:SetFocus()
+	end)
+		
+	editorFrame.SF = CreateFrame("ScrollFrame", "$parent_DF", editorFrame, "UIPanelScrollFrameTemplate")
+	editorFrame.SF:SetPoint("TOPLEFT", editorFrame, 8, -30)
+	editorFrame.SF:SetPoint("BOTTOMRIGHT", editorFrame, -30, 10)
+
+	editorFrame.Text = CreateFrame("EditBox", nil, f)
+	editorFrame.Text:SetMultiLine(true)
+	editorFrame.Text:SetSize(210, 170)
+	editorFrame.Text:SetPoint("TOPLEFT", editorFrame.SF)
+	editorFrame.Text:SetPoint("BOTTOMRIGHT", editorFrame.SF)
+	editorFrame.Text:SetMaxLetters(99999)
+	editorFrame.Text:SetFontObject(ChatFontNormal)
+	editorFrame.Text:SetAutoFocus(false)
+	editorFrame.Text:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	editorFrame.Text:SetScript("OnLeave", function(self) self:ClearFocus() end)
+
+	editorFrame.SF:SetScrollChild(editorFrame.Text)
+
+	local listStr = ""
+	for _, key in ipairs(unitscan.sorted_targets()) do
+		listStr = listStr .. key .. "\n"
+	end
+	listStr = listStr:sub(1, -2) -- Trim off trailing newline
+	editorFrame.Text:SetText(listStr)
+end
 	
 SLASH_UNITSCAN1 = '/unitscan'
 function SlashCmdList.UNITSCAN(parameter)
 	local _, _, name = strfind(parameter, '^%s*(.-)%s*$')
 	
-	if name == '' then
-		for _, key in ipairs(unitscan.sorted_targets()) do
-			unitscan.print(key)
-		end
+	if name == ''or name == 'help' then
+		unitscan.print("help")
+		unitscan.print("/unitscan <name> - Quickly adds or removes the mob <name> to tracker.")
+		unitscan.print("/unitscan edit - Opens editor window. Place 1 mob name per line.")
+		unitscan.print("/unitscan volume low - Sets alert sound volume to low.")
+		unitscan.print("/unitscan volume high - Sets alert sound volume to high.")
+	elseif name == 'volume' then
+		unitscan.print("/unitscan volume low - Sets alert sound volume to low.")
+		unitscan.print("/unitscan volume high - Sets alert sound volume to high.")
+	elseif name == 'volume low' then
+		volumeLevel = 'low'
+	elseif name == 'volume high' then
+		volumeLevel = 'high'
+	elseif name == 'edit' then
+		unitscan.editor()
 	else
 		unitscan.toggle_target(name)
 	end
